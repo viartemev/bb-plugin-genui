@@ -13,6 +13,7 @@ import { FenceOverlay } from "./ui/FenceOverlay";
 import { FENCE_LANGUAGES, SlotFence } from "./ui/SlotFence";
 import { GalleryPanel } from "./ui/GalleryPanel";
 import { UiDirective } from "./ui/UiDirective";
+import { insertLessUiRequest } from "./ui/lessUi";
 
 export default definePluginApp((app) => {
   // Declared by the SDK, but BB before the slot (0.45) has no such method at runtime.
@@ -28,5 +29,14 @@ export default definePluginApp((app) => {
     });
   }
   app.slots.messageDirective({ id: "ui", component: UiDirective });
+  // "Too much UI" on a reply: the request goes into the composer, ready to
+  // send. The level that keeps a whole thread quiet is the plugin's setting
+  // (`bb genui verbosity`), which is what this starts a conversation about.
+  app.slots.messageAction({
+    id: "less-ui",
+    title: "Generative UI: less UI, please",
+    icon: "AlignLeft",
+    run: insertLessUiRequest,
+  });
   app.slots.navPanel({ id: "gallery", title: "Gen-UI Gallery", icon: "GridView", path: "gallery", component: GalleryPanel });
 });

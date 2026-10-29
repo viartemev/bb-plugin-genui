@@ -26,6 +26,8 @@ import { projectRequestKey, type ProjectRequest, type ProjectResult } from "./co
 import { readScene, sceneAssets } from "./core/scene";
 import { shaderInputNames, shaderPasses } from "./core/shader-args";
 import type { UiNode, Value } from "./core/types";
+import { lintNoise } from "./core/noise";
+import type { Verbosity } from "./verbosity";
 
 /** Fetches one file a spec reads: parsed for Load, raw text for Snippet. */
 type Loader = (request: DataRequest) => Promise<LoadedData>;
@@ -185,6 +187,7 @@ export async function checkSpec(
   load: Loader,
   find?: ImageFinder,
   project?: ProjectReader,
+  verbosity?: Verbosity,
 ): Promise<{ readonly ok: boolean; readonly report: string }> {
   const compiled = compile(spec);
   if (compiled.program === null) {
@@ -204,8 +207,12 @@ export async function checkSpec(
     ...probed.failures.map(({ probe, diagnostics }) => `After ${probe.describe}:\n${formatDiagnostics(diagnostics)}`),
   ];
   const tried = probed.tried === 0 ? "" : ` Tried ${probed.tried} interaction${probed.tried === 1 ? "" : "s"}.`;
+  // How much UI this session is asked for decides which blocks are worth a
+  // note; a block that compiles is never an error because of it.
+  const notes = verbosity === undefined ? [] : lintNoise(compiled.program, verbosity);
+  const noteText = notes.length === 0 ? "" : `\n\nReads better as prose at this level (not errors):\n${notes.map((note) => `- ${note}`).join("\n")}`;
   const preview = `Text version of what the user will see:\n\n${await rootsMarkdown(roots, find, project)}`;
   return problems.length === 0
-    ? { ok: true, report: `No errors.${tried} ${preview}` }
+    ? { ok: true, report: `No errors.${tried}${noteText} ${preview}` }
     : { ok: false, report: `Fix before replying:\n${problems.join("\n")}\n\n${preview}` };
 }
