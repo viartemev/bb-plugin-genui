@@ -249,15 +249,22 @@ export default async function plugin(bb: BbPluginApi) {
   /** The level a session gets: thread override, then project override, then the setting. */
   const verbosityFor = (scope: { readonly threadId?: string | null; readonly projectId?: string | null }): Verbosity =>
     resolveVerbosity(hostVerbosity, overrides, scope);
-  async function setOverride(
+  // One write at a time, each built on the last one stored: two threads
+  // setting their level at once must not drop either. Stored before the cache
+  // changes, so a failed write leaves the level sessions get as it was.
+  let overridesWritten: Promise<unknown> = Promise.resolve();
+  function setOverride(
     scope: { readonly project?: string; readonly thread?: string },
     level: Verbosity | null,
   ): Promise<VerbosityOverrides> {
-    // Stored first: a failed write leaves the level sessions get as it was.
-    const next = withOverride(overrides, scope, level);
-    await bb.storage.kv.set(VERBOSITY_OVERRIDES_KEY, next);
-    overrides = next;
-    return next;
+    const written = overridesWritten.then(async () => {
+      const next = withOverride(overrides, scope, level);
+      await bb.storage.kv.set(VERBOSITY_OVERRIDES_KEY, next);
+      overrides = next;
+      return next;
+    });
+    overridesWritten = written.catch(() => undefined);
+    return written;
   }
   /** Image searches and Wikipedia photos (Map places) for markdown renderings: the photo found, or null (none, or lookups off). */
   const findImage = {

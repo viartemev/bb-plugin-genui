@@ -78,6 +78,16 @@ describe("the verbosity level a session gets", () => {
     expect((await reloaded.harness.runCli(["verbosity"], { threadId: "thr_1", projectId: "proj_a" })).stdout).toBe("normal (the host setting)\n");
   });
 
+  it("keeps both of two overrides set at once", async () => {
+    const { harness } = await loaded();
+    await Promise.all([
+      harness.runCli(["verbosity", "off"], { threadId: "thr_1", projectId: "proj_a" }),
+      harness.runCli(["verbosity", "eager"], { threadId: "thr_2", projectId: "proj_a" }),
+    ]);
+    expect((await harness.runCli(["verbosity"], { threadId: "thr_1", projectId: "proj_a" })).stdout).toBe("off (thread thr_1)\n");
+    expect((await harness.runCli(["verbosity"], { threadId: "thr_2", projectId: "proj_a" })).stdout).toBe("eager (thread thr_2)\n");
+  });
+
   it("sets the host setting with --global", async () => {
     const { harness } = await loaded();
     expect((await harness.runCli(["verbosity", "sparing", "--global"], { threadId: "thr_1" })).stdout).toBe("sparing (host setting)\n");
