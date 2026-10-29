@@ -29,11 +29,12 @@ The internals behind [the README](../README.md): how agents learn the language, 
      table, numbered steps, pasted code or an ASCII diagram is the wrong form
      for it; that the rest is prose in the agent's own words, never a lone
      sentence over a card; and what to answer in prose instead. They differ
-     in how much they ask for, not in kind: `eager` is the release-0.3 text
+     in how much they ask for, not in kind: `eager` is the text up to 0.3.1
      verbatim ("in doubt, add the block", five worked examples), `normal` is
      the default (that tie broken towards prose, an explicit plain-prose list,
      three examples), `sparing` asks for prose with at most one block and one
-     example. A shape list names a component for every kind of content. Only the message that ends the
+     example, a choice, since that is one of the few things it allows a
+     block for. A shape list names a component for every kind of content. Only the message that ends the
      turn may hold a block: progress notes, thinking and tool input stay
      plain text, and nothing asks the user to decide mid-turn. Questions go
      in one Form or one run of Buttons (see 6 below). "Read in BB, not a

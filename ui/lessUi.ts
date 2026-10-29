@@ -13,15 +13,11 @@ export const LESS_UI_REQUEST =
 
 /**
  * Puts the request in the thread's composer after whatever is already drafted.
- * Only an assistant reply can have too much UI, and a timeline without a
- * composer (an embedded ThreadChat) has nowhere to put it: both are a no-op
- * that reports it did nothing, so the host does not offer the action for
- * nothing.
+ * The host shows a message action on user messages too and has no way to hide
+ * it there, so on one (only a reply can have too much UI) and on a surface
+ * without a composer this does nothing.
  */
-export function insertLessUiRequest(context: PluginMessageActionContext): boolean {
-  if (context.message.role !== "assistant") return false;
-  const composer = context.composer;
-  if (composer === null) return false;
-  composer.insert(LESS_UI_REQUEST, { at: "end", block: true });
-  return true;
+export function insertLessUiRequest(context: PluginMessageActionContext): void {
+  if (context.message.role !== "assistant") return;
+  context.composer?.insert(LESS_UI_REQUEST, { at: "end", block: true });
 }

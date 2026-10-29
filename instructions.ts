@@ -5,7 +5,7 @@
 //   (the ui_examples tool's) come first: the syntax and every component
 //   signature, generated from the catalog so the prompt cannot drift from
 //   what the parser accepts, plus the icon names.
-// - AGENT_INSTRUCTIONS (bb.agents.configure) comes last, closest to the
+// - agentInstructions (bb.agents.configure) comes last, closest to the
 //   conversation: when to write UI, and worked examples. Examples here are the
 //   strongest lever on what models write; moved to the earlier section, the
 //   same calculator example stopped being followed.
@@ -16,7 +16,7 @@
 // levels swap that section and the examples rather than adding to them,
 // because one level's text is already close to the 4096 cap.
 import { ACTIONS, callSignature, COMPONENTS, componentSignature, type ComponentGroup, type ComponentName, type ComponentSpec } from "./core/catalog";
-import { DEFAULT_VERBOSITY, type Verbosity } from "./verbosity";
+import type { Verbosity } from "./verbosity";
 
 /**
  * Groups too big for the reference: their required params only, with the
@@ -137,7 +137,7 @@ const NORMAL_OPENING = `${FRAME} Write a block when the content is something to 
 Answer in prose, with no block, for a definition, a yes/no, a status, a list of one or two items, a single figure, a recommendation that fits in a sentence, a recap of what you just did, or anything the user asked to keep short. Do not draw a diagram to explain a concept, a chart for one number, or a card around one sentence. When unsure, write prose: the user can ask for a block.`;
 
 /** "sparing": prose is the answer; a block has to earn its place. */
-const SPARING_OPENING = `Answer in prose, with at most one block, and only when the content cannot be read as prose: a table of several rows, a real series over time, tool output saved to a file, or a choice the user must make before you continue. Never for an explanation, a yes/no, a status, a list of one or two items, a single figure, or a recap of what you just did.`;
+const SPARING_OPENING = `${FRAME} Answer in prose, with at most one block, and only when the content cannot be read as prose: a table of several rows, a real series over time, tool output saved to a file, or a choice the user must make before you continue. Never for an explanation, a yes/no, a status, a list of one or two items, a single figure, or a recap of what you just did.`;
 
 const MIDTURN = `Only the message that ends your turn may hold a block. While you are still working, and in thinking, files, commits, PR text and tool input, write plain text; don't ask the user to decide anything mid-turn.`;
 
@@ -191,7 +191,7 @@ Card("Caching", [Button("Use in memory"), Button("Use Redis")])
 
 const CLOSER_EAGER = `Before you send: each table, series, flow, code excerpt, set of dates or places, and choice in the reply is a block; the prose gives the answer and the why.`;
 
-const CLOSER_NORMAL = `Before you send: is every block carrying something prose cannot? One block per reply is enough, and a Card around one sentence, one number or one badge is a paragraph in disguise.`;
+const CLOSER_NORMAL = `Before you send: is every block carrying something prose cannot? Two blocks are plenty, and a Card around one sentence, one number or one badge is a paragraph in disguise.`;
 
 /** The parts of a section, in order, per level. "off" composes nothing. */
 type Shown = Exclude<Verbosity, "off">;
@@ -205,7 +205,7 @@ const PARTS: Record<Shown, readonly string[]> = {
 const EXAMPLES: Record<Shown, readonly string[]> = {
   eager: [EXAMPLE_ESTIMATE, EXAMPLE_DIAGRAM, EXAMPLE_FORM, EXAMPLE_BUTTONS, MAP_EXAMPLE],
   normal: [EXAMPLE_ESTIMATE, EXAMPLE_DIAGRAM, EXAMPLE_FORM],
-  sparing: [EXAMPLE_ESTIMATE],
+  sparing: [EXAMPLE_FORM],
 };
 
 const CLOSERS: Record<Shown, string> = { eager: CLOSER_EAGER, normal: CLOSER_NORMAL, sparing: "" };
@@ -239,17 +239,8 @@ export const AGENT_INSTRUCTIONS_BY_VERBOSITY: Readonly<Record<Verbosity, string>
   sparing: compose("sparing", true),
 };
 
-/**
- * What a session gets told, or "" for "off" (the reference sections of
- * check_ui and ui_examples still name the syntax; the agent is simply not
- * asked to write a block).
- */
+/** What a session gets told, or "" for "off", which also withholds check_ui and ui_examples. */
 export function agentInstructions(level: Verbosity, webOn = true): string {
   if (level === "off") return "";
   return webOn ? AGENT_INSTRUCTIONS_BY_VERBOSITY[level] : compose(level, false);
 }
-
-/** The default level's text; kept for callers that predate the setting. */
-export const AGENT_INSTRUCTIONS = AGENT_INSTRUCTIONS_BY_VERBOSITY[DEFAULT_VERBOSITY];
-
-export const AGENT_INSTRUCTIONS_WEB_OFF = compose("eager", false);

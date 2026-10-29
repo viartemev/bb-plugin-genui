@@ -253,9 +253,10 @@ export default async function plugin(bb: BbPluginApi) {
     scope: { readonly project?: string; readonly thread?: string },
     level: Verbosity | null,
   ): Promise<VerbosityOverrides> {
+    // Stored first: a failed write leaves the level sessions get as it was.
     const next = withOverride(overrides, scope, level);
-    overrides = next;
     await bb.storage.kv.set(VERBOSITY_OVERRIDES_KEY, next);
+    overrides = next;
     return next;
   }
   /** Image searches and Wikipedia photos (Map places) for markdown renderings: the photo found, or null (none, or lookups off). */
@@ -457,6 +458,18 @@ export default async function plugin(bb: BbPluginApi) {
               thread !== undefined ? `thread ${threadId}` : project !== undefined ? `project ${projectId}` : "the host setting";
             if (wanted === undefined && !input.options.clear) {
               return { exitCode: 0, stdout: `${verbosityFor({ threadId, projectId })} (${source})\n` };
+            }
+            if (wanted !== undefined && input.options.clear) {
+              throw new PluginCliError("give a level or --clear, not both", {
+                code: "invalid_arguments",
+                hint: "`--clear` drops the override; to set one, leave it out",
+              });
+            }
+            if (input.options.project && input.options.global) {
+              throw new PluginCliError("--project and --global name different scopes", {
+                code: "invalid_arguments",
+                hint: "Pick one: --project for this thread's project, --global for the host setting",
+              });
             }
             if (wanted !== undefined && !isVerbosity(wanted)) {
               throw new PluginCliError(`"${wanted}" is not a level`, {

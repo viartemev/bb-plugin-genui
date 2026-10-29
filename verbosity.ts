@@ -14,7 +14,7 @@ export type Verbosity = (typeof VERBOSITY_LEVELS)[number];
 
 /**
  * "normal" keeps the plugin's defaults: a block where one genuinely carries
- * the content, prose otherwise. "eager" is the pre-0.4 text that asked for a
+ * the content, prose otherwise. "eager" is the text up to 0.3.1 that asked for a
  * block wherever part of a reply is better seen than read.
  */
 export const DEFAULT_VERBOSITY: Verbosity = "normal";
@@ -49,7 +49,7 @@ export const VERBOSITY_SETTINGS = {
 /** Where per-project and per-thread overrides live; one small kv row. */
 export const VERBOSITY_OVERRIDES_KEY = "verbosity:overrides";
 
-/** Overrides are tiny, but they are written on demand: keep the store bounded. */
+/** Overrides are tiny, but they are written on demand: keep each scope's map bounded. */
 export const MAX_VERBOSITY_OVERRIDES = 500;
 
 export interface VerbosityOverrides {
@@ -95,38 +95,34 @@ export function resolveVerbosity(
 
 /**
  * A copy of `overrides` with one scope set to `level`, or cleared when `level`
- * is null. Oldest thread overrides fall out once the store is full, so a long
- * session that muted UI in many threads cannot grow past the cap.
+ * is null. Setting an id again makes it the newest, and the least recently
+ * set ids fall out once a scope is full, so a long-running host that muted UI
+ * in many threads cannot grow past the cap.
  */
 export function withOverride(
   overrides: VerbosityOverrides,
   scope: { readonly project?: string; readonly thread?: string },
   level: Verbosity | null,
 ): VerbosityOverrides {
-  if (scope.thread === undefined && scope.project === undefined) {
-    throw new Error("withOverride needs a project or a thread");
-  }
   if (scope.project !== undefined) {
     return { projects: assign(overrides.projects, scope.project, level), threads: { ...overrides.threads } };
   }
-  const threads = assign(overrides.threads, scope.thread!, level);
-  const ids = Object.keys(threads);
-  if (ids.length > MAX_VERBOSITY_OVERRIDES) {
-    const kept = ids.slice(ids.length - MAX_VERBOSITY_OVERRIDES);
-    const trimmed: Record<string, Verbosity> = {};
-    for (const id of kept) trimmed[id] = threads[id]!;
-    return { projects: { ...overrides.projects }, threads: trimmed };
+  if (scope.thread !== undefined) {
+    return { projects: { ...overrides.projects }, threads: assign(overrides.threads, scope.thread, level) };
   }
-  return { projects: { ...overrides.projects }, threads };
+  throw new Error("withOverride needs a project or a thread");
 }
 
+/** `current` with `id` moved to the end at `level` (or removed), trimmed to the cap from the oldest end. */
 function assign(
   current: Readonly<Record<string, Verbosity>>,
   id: string,
   level: Verbosity | null,
 ): Record<string, Verbosity> {
   const next = { ...current };
-  if (level === null) delete next[id];
-  else next[id] = level;
+  delete next[id];
+  if (level !== null) next[id] = level;
+  const ids = Object.keys(next);
+  for (const old of ids.slice(0, Math.max(0, ids.length - MAX_VERBOSITY_OVERRIDES))) delete next[old];
   return next;
 }

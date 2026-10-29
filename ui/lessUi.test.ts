@@ -15,15 +15,17 @@ describe("less UI request", () => {
   it("puts the request at the end of the composer", () => {
     const calls: unknown[] = [];
     const composer = { insert: (...args: unknown[]) => calls.push(args) };
-    expect(insertLessUiRequest(context({ composer }))).toBe(true);
+    insertLessUiRequest(context({ composer }));
     expect(calls).toEqual([[LESS_UI_REQUEST, { at: "end", block: true }]]);
   });
 
   // Only a reply can hold too much UI, and a timeline without a composer has
   // nowhere to put the request.
   it("do nothing on a user message or without a composer", () => {
-    expect(insertLessUiRequest(context({ role: "user" }))).toBe(false);
-    expect(insertLessUiRequest(context({ composer: null }))).toBe(false);
+    const calls: unknown[] = [];
+    insertLessUiRequest(context({ role: "user", composer: { insert: (...args: unknown[]) => calls.push(args) } }));
+    expect(calls).toEqual([]);
+    expect(() => insertLessUiRequest(context({ composer: null }))).not.toThrow();
   });
 
   it("ask for prose and a reason to show a block", () => {

@@ -25,7 +25,7 @@ describe("noise notes", () => {
     const two = 'Card("A", [Table(["x"], [["1"], ["2"]])])\nCard("B", [Table(["y"], [["3"], ["4"]])])';
     expect(lintNoise(program(two), "normal")).toEqual([]);
     expect(lintNoise(program(two), "sparing")).toHaveLength(1);
-    expect(lintNoise(program(two), "off")[0]).toContain("2 blocks");
+    expect(lintNoise(program(two), "off")[0]).toContain("2 top-level components");
   });
 
   // A three-box flow is a sentence with arrows; a real topology is not.
@@ -52,6 +52,20 @@ describe("diagramNodes", () => {
     expect(diagramNodes("flowchart LR\n  A[One] --> B[Two]")).toBe(2);
     expect(diagramNodes("graph TD\n  subgraph x\n  A(One) --> B{Two}\n  end")).toBe(2);
     expect(diagramNodes("flowchart LR\n  A[One] --> B[Two]\n  style A fill:#fff")).toBe(2);
+    expect(diagramNodes("flowchart LR\n  subgraph S[Service]\n  A[One] --> B[Two]\n  end")).toBe(2);
+    expect(diagramNodes("flowchart LR\n  %% A[not drawn]\n  A[One] --> B[Two]\n  click A call open(A)")).toBe(2);
+  });
+
+  // A node written with its shape on every edge is still one box.
+  it("count a node declared twice once", () => {
+    expect(diagramNodes("flowchart LR\n  A[x] --> B[y]\n  A[x] --> C[z]\n  B[y] --> C[z]")).toBe(3);
+  });
+
+  // What a shape or an edge says is not a box, brackets and all.
+  it("ignore ids and brackets inside labels", () => {
+    expect(diagramNodes("flowchart LR\n  A[call fetch(url)] --> B[parse(json)]")).toBe(2);
+    expect(diagramNodes("flowchart LR\n  A((Start)) -->|run(x)| B{{ok?}}\n  B --> C>flag]")).toBe(3);
+    expect(diagramNodes("flowchart LR\n  A[\"Login (form)\"] --> B[(db)]")).toBe(2);
   });
 
   it("read an empty or unrecognized body as no boxes", () => {

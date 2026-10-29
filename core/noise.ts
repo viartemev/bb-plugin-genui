@@ -15,10 +15,12 @@ const PROSE_ONLY = new Set(["Text", "Callout", "Badge", "Icon", "Metric"]);
 /** How many top-level blocks each level tolerates before saying so. */
 const MAX_BLOCKS: Readonly<Record<Verbosity, number>> = { off: 0, sparing: 1, normal: 2, eager: Number.POSITIVE_INFINITY };
 
-/** Mermaid node declarations: `A[...]`, `B(...)`, `C{...}`. */
-const MERMAID_NODE = /\b[A-Za-z0-9_]+[[({]/g;
-/** Edges and subgraph headers are not nodes, however they are written. */
-const MERMAID_NOT_A_NODE = new Set(["subgraph", "end", "style", "classDef", "linkStyle", "click"]);
+/** An id written right before a shape: `A[...]`, `B(...)`, `C{...}`, `D>...]`. */
+const MERMAID_NODE = /\b([A-Za-z0-9_]+)[[({>]/g;
+/** Lines that name or style nodes without drawing one: subgraph headers, styling, clicks, comments. */
+const MERMAID_NOT_A_NODE = /^\s*(?:(?:subgraph|end|style|classDef|class|linkStyle|click)\b|%%)/;
+/** What a shape or an edge says, which can hold ids and brackets of its own: `[call f(x)]`, `|POST /login|`. */
+const MERMAID_TEXT = /"[^"]*"|\|[^|\n]*\||\[[^\]\n]*\]|\([^)\n]*\)|\{[^}\n]*\}|(?<=\w)>[^\]\n]*\]/g;
 
 function call(expr: Expr): CallExpr | null {
   return expr.type === "call" ? expr : null;
@@ -40,10 +42,21 @@ function children(node: CallExpr): readonly Expr[] | null {
   return second !== undefined && second.type === "list" ? second.items : null;
 }
 
-/** How many boxes a Diagram's mermaid source draws; 0 when it is not a string. */
+/**
+ * How many boxes a Diagram's mermaid source draws: distinct ids written with a
+ * shape, so a node declared twice is one box and the text inside a shape is
+ * none. Bare ids (`A --> B`) are not counted: a note is only worth giving
+ * when the count is sure.
+ */
 export function diagramNodes(source: string): number {
-  const names = [...source.matchAll(MERMAID_NODE)].map((match) => match[0].slice(0, -1));
-  return names.filter((name) => !MERMAID_NOT_A_NODE.has(name)).length;
+  const names = new Set<string>();
+  for (const line of source.split("\n")) {
+    if (MERMAID_NOT_A_NODE.test(line)) continue;
+    // Keep each shape's opening character so its id still matches, and drop what it says.
+    const shapes = line.replace(MERMAID_TEXT, (text) => (text[0] === '"' || text[0] === "|" ? " " : `${text[0]} `));
+    for (const match of shapes.matchAll(MERMAID_NODE)) names.add(match[1]!);
+  }
+  return names.size;
 }
 
 /**
@@ -61,7 +74,7 @@ export function lintNoise(program: Program, level: Verbosity = DEFAULT_VERBOSITY
   const max = MAX_BLOCKS[level];
   if (blocks > max) {
     notes.push(
-      `the reply holds ${blocks} blocks; ${max === 0 ? "none" : max === 1 ? "one is" : `${max} are`} enough at this level — keep the one that carries the most, and write the rest as prose`,
+      `this block holds ${blocks} top-level components; ${max === 0 ? "none" : max === 1 ? "one is" : `${max} are`} enough at this level — keep the one that carries the most, and write the rest as prose`,
     );
   }
 

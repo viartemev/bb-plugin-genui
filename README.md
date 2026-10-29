@@ -123,7 +123,7 @@ bb genui verbosity --clear --project # drop an override again
 | `off` | Nothing: no rules, no `check_ui`, no `ui_examples`. Replies are markdown; a block written anyway still renders. |
 | `sparing` | Prose, with at most one block, only when it carries something prose cannot: a table of several rows, a real series, saved tool output, a choice or a form. |
 | `normal` (default) | A block wherever it genuinely replaces a table, a chart, a diagram, tool output, a plan or a question; prose for everything else. |
-| `eager` | A block wherever part of a reply is better used than read — the text agents got before this setting existed. |
+| `eager` | A block wherever part of a reply is better used than read — the text agents got up to 0.3.1. |
 
 A thread's own level beats its project's, which beats the setting. The level reaches an agent when its next session starts (a new thread at once; a running one after BB restarts its process, which `bb thread clear` does immediately). It decides three things together: the text the agent is given, whether the two UI tools are offered at all, and how strictly `check_ui` reports a block that reads better as prose — a Card around one sentence or one number, a diagram of three boxes, more blocks than the level wants. Those come back as notes under the usual report, never as errors, so a block that compiles is still fine to send.
 

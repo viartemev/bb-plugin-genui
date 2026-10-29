@@ -76,6 +76,23 @@ describe("verbosity overrides", () => {
     expect(ids).not.toContain("thr_0");
     expect(ids).toContain(`thr_${count - 1}`);
   });
+
+  // "Oldest" is the least recently set: a thread set again stays.
+  it("keep an override that was set again over older ones", () => {
+    let current = withOverride(NO_OVERRIDES, { thread: "thr_kept" }, "off");
+    for (let index = 0; index < MAX_VERBOSITY_OVERRIDES - 1; index += 1) current = withOverride(current, { thread: `thr_${index}` }, "off");
+    current = withOverride(current, { thread: "thr_kept" }, "sparing");
+    current = withOverride(current, { thread: "thr_new" }, "off");
+    expect(current.threads.thr_kept).toBe("sparing");
+    expect(current.threads).not.toHaveProperty("thr_0");
+  });
+
+  it("keep project overrides bounded too", () => {
+    let current = NO_OVERRIDES;
+    for (let index = 0; index < MAX_VERBOSITY_OVERRIDES + 3; index += 1) current = withOverride(current, { project: `proj_${index}` }, "off");
+    expect(Object.keys(current.projects)).toHaveLength(MAX_VERBOSITY_OVERRIDES);
+    expect(current.projects).not.toHaveProperty("proj_0");
+  });
 });
 
 describe("reading stored overrides", () => {

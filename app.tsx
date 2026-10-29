@@ -36,9 +36,7 @@ export default definePluginApp((app) => {
     id: "less-ui",
     title: "Generative UI: less UI, please",
     icon: "AlignLeft",
-    run: (context) => {
-      insertLessUiRequest(context);
-    },
+    run: insertLessUiRequest,
   });
   app.slots.navPanel({ id: "gallery", title: "Gen-UI Gallery", icon: "GridView", path: "gallery", component: GalleryPanel });
 });
