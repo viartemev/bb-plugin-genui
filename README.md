@@ -106,6 +106,29 @@ To try it, ask an agent something with a shape: *"Compare Postgres, SQLite and D
 bb genui ask "Plan a two-day trip to Lisbon"
 ```
 
+## How much UI
+
+How much inline UI agents write is yours to set, per host, per project or per thread:
+
+```sh
+bb genui verbosity                  # what this thread gets, and where it comes from
+bb genui verbosity sparing          # this thread only
+bb genui verbosity off --project     # every thread of this thread's project
+bb genui verbosity normal --global   # the host setting (Settings → Installed plugins → Generative UI → How much UI)
+bb genui verbosity --clear --project # drop an override again
+```
+
+| Level | What agents are asked for |
+| --- | --- |
+| `off` | Nothing: no rules, no `check_ui`, no `ui_examples`. Replies are markdown; a block written anyway still renders. |
+| `sparing` | Prose, with at most one block, only when it carries something prose cannot: a table of several rows, a real series, saved tool output, a choice or a form. |
+| `normal` (default) | A block wherever it genuinely replaces a table, a chart, a diagram, tool output, a plan or a question; prose for everything else. |
+| `eager` | A block wherever part of a reply is better used than read — the text agents got before this setting existed. |
+
+A thread's own level beats its project's, which beats the setting. The level reaches an agent when its next session starts (a new thread at once; a running one after BB restarts its process, which `bb thread clear` does immediately). It decides three things together: the text the agent is given, whether the two UI tools are offered at all, and how strictly `check_ui` reports a block that reads better as prose — a Card around one sentence or one number, a diagram of three boxes, more blocks than the level wants. Those come back as notes under the usual report, never as errors, so a block that compiles is still fine to send.
+
+For one reply rather than a whole thread, the *Generative UI: less UI, please* action in a reply's action bar puts the request in your message box, where you can edit it or drop it before sending.
+
 ## What it costs, and what it touches
 
 - **Tokens.** Sessions whose replies you read get about 15 KB of instructions (6,432 tokens, measured) that teach the components. Worker threads that another agent spawns get none. A UI costs no extra model call: it is part of the reply. BB sends the instructions again each time it restarts the agent process for a thread, and those copies stay in the context until it is compacted.

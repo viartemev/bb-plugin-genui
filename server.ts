@@ -48,7 +48,19 @@ import {
   type EnvironmentsResult,
 } from "./core/project";
 import { examplesReport } from "./examples";
-import { AGENT_INSTRUCTIONS, AGENT_INSTRUCTIONS_WEB_OFF, CODE_WORK_INSTRUCTIONS, UI_REFERENCE, UI_REFERENCE_MORE } from "./instructions";
+import { agentInstructions, CODE_WORK_INSTRUCTIONS, UI_REFERENCE, UI_REFERENCE_MORE } from "./instructions";
+import {
+  DEFAULT_VERBOSITY,
+  isVerbosity,
+  parseOverrides,
+  resolveVerbosity,
+  VERBOSITY_LEVELS,
+  VERBOSITY_OVERRIDES_KEY,
+  VERBOSITY_SETTINGS,
+  withOverride,
+  type Verbosity,
+  type VerbosityOverrides,
+} from "./verbosity";
 import { foundImageSchema, wikiPhotoSchema } from "./web/commons";
 import { locatedSchema } from "./web/geocode";
 import { createWebLookups, MAX_TILE_ZOOM } from "./web/lookups";
@@ -224,6 +236,28 @@ export const rpcContract = defineRpcContract({
 export default async function plugin(bb: BbPluginApi) {
   const web = createWebLookups(bb);
   bb.settings.define(MOTION_SETTINGS);
+  // How much UI this host asks for, and the overrides that let one project or
+  // one thread disagree with it. `configure` below is synchronous and runs on
+  // every turn, so both are kept in memory and written through on change.
+  const verbositySetting = bb.settings.define(VERBOSITY_SETTINGS);
+  const storedVerbosity = await verbositySetting.get();
+  let hostVerbosity: Verbosity = isVerbosity(storedVerbosity.verbosity) ? storedVerbosity.verbosity : DEFAULT_VERBOSITY;
+  verbositySetting.onChange((next) => {
+    hostVerbosity = isVerbosity(next.verbosity) ? next.verbosity : DEFAULT_VERBOSITY;
+  });
+  let overrides: VerbosityOverrides = parseOverrides(await bb.storage.kv.get(VERBOSITY_OVERRIDES_KEY));
+  /** The level a session gets: thread override, then project override, then the setting. */
+  const verbosityFor = (scope: { readonly threadId?: string | null; readonly projectId?: string | null }): Verbosity =>
+    resolveVerbosity(hostVerbosity, overrides, scope);
+  async function setOverride(
+    scope: { readonly project?: string; readonly thread?: string },
+    level: Verbosity | null,
+  ): Promise<VerbosityOverrides> {
+    const next = withOverride(overrides, scope, level);
+    overrides = next;
+    await bb.storage.kv.set(VERBOSITY_OVERRIDES_KEY, next);
+    return next;
+  }
   /** Image searches and Wikipedia photos (Map places) for markdown renderings: the photo found, or null (none, or lookups off). */
   const findImage = {
     search: async (query: string) => {
@@ -258,6 +292,7 @@ export default async function plugin(bb: BbPluginApi) {
               (request) => loadThreadFile(bb, ctx.threadId, request.path, request),
               findImage,
               projectReader(project, environments, ctx.threadId),
+              verbosityFor({ threadId: ctx.threadId, projectId: ctx.projectId }),
             );
       return { content: [{ type: "text", text: report }], isError: !ok };
     },
@@ -278,11 +313,12 @@ export default async function plugin(bb: BbPluginApi) {
     },
   });
 
-  // Threads configure last found to have a person reading their replies. BB
-  // resolves configure before it asks instruction contributors, within the
-  // same session resolution, so the code-work section below reaches exactly
-  // the sessions that get the other three. Bounded; oldest forgotten first.
-  const personThreads = new Set<string>();
+  // Threads configure last found to have a person reading their replies, with
+  // the level each one resolved to. BB resolves configure before it asks
+  // instruction contributors, within the same session resolution, so the
+  // code-work section below reaches exactly the sessions that get the other
+  // three. Bounded; oldest forgotten first.
+  const personThreads = new Map<string, Verbosity>();
   bb.agents.configure((context) => {
     // Only sessions whose replies a person reads in chat: not threads another
     // agent spawned (their reply goes back to that agent) and not threads a
@@ -294,12 +330,19 @@ export default async function plugin(bb: BbPluginApi) {
         (context.origin.pluginId === null || context.origin.pluginId === "side-chat"));
     personThreads.delete(context.thread.id);
     if (!forPerson) return { tools: [], skills: [] };
-    personThreads.add(context.thread.id);
-    if (personThreads.size > MAX_PERSON_THREADS) personThreads.delete(personThreads.values().next().value!);
-    const instructions = web.isOn() ? AGENT_INSTRUCTIONS : AGENT_INSTRUCTIONS_WEB_OFF;
+    const level = verbosityFor({ threadId: context.thread.id, projectId: context.project.id });
+    personThreads.set(context.thread.id, level);
+    if (personThreads.size > MAX_PERSON_THREADS) personThreads.delete(personThreads.keys().next().value!);
+    // "off": the tools and the rules both step aside, so nothing in the prompt
+    // asks for a block and nothing arrives to check one.
+    if (level === "off") return { tools: [], skills: [] };
+    const instructions = agentInstructions(level, web.isOn());
     return { tools: ["check_ui", "ui_examples"], skills: [], instructions };
   });
-  bb.agents.contributeInstructions(({ threadId }) => (personThreads.has(threadId) ? CODE_WORK_INSTRUCTIONS : null));
+  bb.agents.contributeInstructions(({ threadId }) => {
+    const level = personThreads.get(threadId);
+    return level === undefined || level === "off" ? null : CODE_WORK_INSTRUCTIONS;
+  });
 
   bb.rpc.register(rpcContract, {
     async get_ui({ id }) {
@@ -355,7 +398,7 @@ export default async function plugin(bb: BbPluginApi) {
   bb.cli.register(
     defineCli({
       name: "genui",
-      summary: "Read replies that contain inline UI as plain markdown",
+      summary: "Read replies as plain markdown, try a prompt, set how much UI agents write",
       commands: {
         ask: cliCommand({
           summary: "Try a prompt in a subthread of this thread whose agent gets the inline UI instructions",
@@ -391,6 +434,59 @@ export default async function plugin(bb: BbPluginApi) {
               pluginMetadata: { audience: "person" },
             });
             return { exitCode: 0, stdout: `${thread.id}\n` };
+          },
+        }),
+        verbosity: cliCommand({
+          summary: "Show or set how much inline UI agents here are asked to write",
+          description:
+            "With no level, prints the level this thread gets and where it comes from. With a level, sets it for this thread, for its project (--project), or host-wide (--global, the same value as `bb plugin config genui set verbosity …`). --clear removes a thread or project override. The new level reaches the agent when its next session starts.",
+          options: {
+            project: { type: "boolean", description: "Set this thread's project instead of the thread" },
+            global: { type: "boolean", description: "Set the host-wide setting instead of a thread or project override" },
+            clear: { type: "boolean", description: "Remove the override instead of setting one" },
+          },
+          positionals: [
+            { name: "level", description: `One of ${VERBOSITY_LEVELS.join(", ")}`, required: false },
+          ],
+          async run(input, ctx) {
+            const { threadId, projectId } = ctx;
+            const wanted = input.positionals.level;
+            const thread = threadId === undefined ? undefined : overrides.threads[threadId];
+            const project = projectId === undefined ? undefined : overrides.projects[projectId];
+            const source =
+              thread !== undefined ? `thread ${threadId}` : project !== undefined ? `project ${projectId}` : "the host setting";
+            if (wanted === undefined && !input.options.clear) {
+              return { exitCode: 0, stdout: `${verbosityFor({ threadId, projectId })} (${source})\n` };
+            }
+            if (wanted !== undefined && !isVerbosity(wanted)) {
+              throw new PluginCliError(`"${wanted}" is not a level`, {
+                code: "invalid_level",
+                hint: `Use one of ${VERBOSITY_LEVELS.join(", ")}`,
+              });
+            }
+            const level = input.options.clear ? null : (wanted as Verbosity);
+            if (input.options.global) {
+              await verbositySetting.experimental_set({ verbosity: level ?? DEFAULT_VERBOSITY });
+              return { exitCode: 0, stdout: `${level ?? DEFAULT_VERBOSITY} (host setting)\n` };
+            }
+            if (input.options.project) {
+              if (projectId === undefined) {
+                throw new PluginCliError("no project to set", {
+                  code: "thread_required",
+                  hint: "Run it from a thread in the project, where BB_PROJECT_ID is set, or use --global",
+                });
+              }
+              await setOverride({ project: projectId }, level);
+              return { exitCode: 0, stdout: `${level ?? "the host setting"} (project ${projectId})\n` };
+            }
+            if (threadId === undefined) {
+              throw new PluginCliError("no thread to set", {
+                code: "thread_required",
+                hint: "Run it from an agent's shell in BB, where BB_THREAD_ID is set, or use --project or --global",
+              });
+            }
+            await setOverride({ thread: threadId }, level);
+            return { exitCode: 0, stdout: `${level ?? "the host setting"} (thread ${threadId})\n` };
           },
         }),
         render: cliCommand({

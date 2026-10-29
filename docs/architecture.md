@@ -5,9 +5,11 @@ The internals behind [the README](../README.md): how agents learn the language, 
 ## From instructions to a rendered block
 
 1. Sessions whose replies a person reads get four instruction sections from
-   `instructions.ts`. Threads spawned by another agent get none, and neither
-   do threads run by plugins other than side chat (for example workflows),
-   except the subthreads `bb genui ask` opens to try a prompt.
+   `instructions.ts`, at the verbosity level their thread resolves to (see
+   "How much UI" in the README: a host setting, a project override, a thread
+   override, in that order). Threads spawned by another agent get none, and
+   neither do threads run by plugins other than side chat (for example
+   workflows), except the subthreads `bb genui ask` opens to try a prompt.
    - `UI_REFERENCE` (the syntax; the Layout, Content, Data and Project
      signatures, generated from the catalog; when to write ```app) rides on
      the optional `check_ui` tool's instructions, and `UI_REFERENCE_MORE`
@@ -21,25 +23,36 @@ The internals behind [the README](../README.md): how agents learn the language, 
      tables. A contribution only gets the thread id, so it goes to the
      threads `configure` last chose; BB resolves `configure` first within a
      session's resolution.
-   - `AGENT_INSTRUCTIONS` (`bb.agents.configure`) comes last, closest to the
-     conversation. It says what the user wants shown (anything better seen
-     or used than read) and that a markdown table, numbered steps, pasted
-     code or an ASCII diagram is the wrong form for it; that the rest is
-     prose in the agent's own words, never a lone sentence over a card; and
-     that a block is skipped only when the whole reply is a few sentences
-     with nothing to see, "in doubt, add the block". A shape list names a
-     component for every kind of content. Only the message that ends the
+   - the "when" section (`bb.agents.configure`) comes last, closest to the
+     conversation, and `instructions.ts` holds one per level (`off` composes
+     nothing). Each says what the agent is asked to show and that a markdown
+     table, numbered steps, pasted code or an ASCII diagram is the wrong form
+     for it; that the rest is prose in the agent's own words, never a lone
+     sentence over a card; and what to answer in prose instead. They differ
+     in how much they ask for, not in kind: `eager` is the release-0.3 text
+     verbatim ("in doubt, add the block", five worked examples), `normal` is
+     the default (that tie broken towards prose, an explicit plain-prose list,
+     three examples), `sparing` asks for prose with at most one block and one
+     example. A shape list names a component for every kind of content. Only the message that ends the
      turn may hold a block: progress notes, thinking and tool input stay
      plain text, and nothing asks the user to decide mid-turn. Questions go
      in one Form or one run of Buttons (see 6 below). "Read in BB, not a
      terminal" is there for Claude Code, whose own system prompt says replies
      show as markdown in a terminal. Examples here are what moves models:
      the same calculator example stopped being followed when it sat in an
-     earlier section. While web lookups are off, `AGENT_INSTRUCTIONS_WEB_OFF`
-     swaps the Map example for a line saying so.
+     earlier section. While web lookups are off, the Map example gives way to
+     a line saying so.
+   - `off` selects neither tool, so a thread at that level gets no syntax and
+     no rules at all; a block written anyway still renders. `check_ui` also
+     reads the level: at `normal` and below it reports blocks that read better
+     as prose (a Card around one sentence or one figure, a diagram of three
+     boxes, more blocks than the level wants) as notes under the usual report
+     — never as errors, since the block compiles.
    BB refuses a tool whose instructions pass 4,096 characters (the plugin
    then fails to reload) and truncates the other sections there;
-   `instructions.test.ts` fails the build past that and compiles every
+   `instructions.test.ts` fails the build past that, holds it for every
+   level (with web lookups on and off, since the levels compose from shared
+   fragments rather than each having room to grow) and compiles every
    example. The four sections and the two tools cost 6,432 input tokens
    per session (measured against a session without them); about 42% is the
    component signatures, 42% the guidance. Formats a component can Load are

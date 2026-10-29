@@ -4,6 +4,18 @@ What changed in each version of the Generative UI plugin for BB. Update an insta
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **How much UI agents write is a setting.** *How much UI* (Settings → Installed plugins → Generative UI) or `bb plugin config genui set verbosity …` picks one of four levels: `off` (no rules, no UI tools, replies are markdown), `sparing` (prose, at most one block, and only when it carries something prose cannot), `normal` (the default: a block wherever it genuinely replaces a table, a chart, a diagram, tool output, a plan or a question) and `eager` (the text from 0.3, which asks for a block wherever part of a reply is better used than read). One project can disagree with the host, and one thread can disagree with both: `bb genui verbosity sparing`, `… --project`, `… --global`, and `… --clear` to drop an override. A thread's level beats its project's, which beats the setting. Older releases asked every session for `eager`.
+- **`check_ui` says when a block reads better as prose.** At `normal` and below it adds notes under the usual report: a Card holding a single sentence, label or figure, a diagram drawing three boxes or fewer, and more blocks than the level wants. They are notes, not errors — the block still compiles and still renders.
+- **"Less UI, please" on any reply.** The new action in a reply's action bar puts the request in your message box, to edit or drop before you send. It is one reply's feedback; the level is the standing one.
+- `bb genui verbosity` with no argument prints the level this thread gets and where it comes from.
+
+### Changed
+- The instructions agents receive are composed from one shared set of fragments instead of one fixed text, so the levels stay inside BB's 4096-character cap for a contributed section and cannot drift apart. The `normal` level drops "in doubt, add the block" (that tie now breaks towards prose), lists what to answer in prose, and carries three worked examples instead of five; `sparing` carries one.
+- `bb genui` now covers more than rendering: its summary names the settings it sets.
+
 ## [0.3.1] - 2026-10-22
 
 ### Fixed
